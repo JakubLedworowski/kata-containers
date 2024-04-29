@@ -15,7 +15,9 @@ package qemu
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/kata-containers/kata-containers/src/runtime/pkg/device/api"
 	"io"
 	"log"
 	"os"
@@ -42,6 +44,12 @@ type Machine struct {
 const (
 	// MachineTypeMicrovm is the QEMU microvm machine type for amd64
 	MachineTypeMicrovm string = "microvm"
+)
+
+const (
+	// Well known vsock CID for host system.
+	// https://man7.org/linux/man-pages/man7/vsock.7.html
+	VsockHostCid uint64 = 2
 )
 
 // Device is the qemu device interface.
@@ -306,6 +314,9 @@ type Object struct {
 
 	// Prealloc enables memory preallocation
 	Prealloc bool
+
+	// QgsPort defines Intel Quote Generation Service port exposed from the host
+	QgsPort uint32
 }
 
 // Valid returns true if the Object structure is valid and complete.
@@ -316,7 +327,7 @@ func (object Object) Valid() bool {
 	case MemoryBackendEPC:
 		return object.ID != "" && object.Size != 0
 	case TDXGuest:
-		return object.ID != "" && object.File != "" && object.DeviceID != ""
+		return object.ID != "" && object.File != "" && object.DeviceID != "" && object.QgsPort != 0
 	case SEVGuest:
 		fallthrough
 	case SNPGuest:
@@ -329,6 +340,40 @@ func (object Object) Valid() bool {
 	default:
 		return false
 	}
+}
+
+type SocketAddress struct {
+	Type string `json:"type"`
+	Cid  string `json:"cid"`
+	Port string `json:"port"`
+}
+
+type TdxQomObject struct {
+	QomType               string        `json:"qom-type"`
+	Id                    string        `json:"id"`
+	QuoteGenerationSocket SocketAddress `json:"quote-generation-socket"`
+}
+
+func (this *SocketAddress) String() string {
+	b, err := json.Marshal(*this)
+
+	if err != nil {
+		api.DeviceLogger().Errorf("Unable to marshal SocketAddress object: %s", err.Error())
+		return ""
+	}
+
+	return string(b)
+}
+
+func (this *TdxQomObject) String() string {
+	b, err := json.Marshal(*this)
+
+	if err != nil {
+		api.DeviceLogger().Errorf("Unable to marshal TDX QOM object: %s", err.Error())
+		return ""
+	}
+
+	return string(b)
 }
 
 // QemuParams returns the qemu parameters built out of this Object device.
@@ -362,11 +407,9 @@ func (object Object) QemuParams(config *Config) []string {
 		}
 
 	case TDXGuest:
-		objectParams = append(objectParams, string(object.Type))
-		objectParams = append(objectParams, fmt.Sprintf("id=%s", object.ID))
-		if object.Debug {
-			objectParams = append(objectParams, "debug=on")
-		}
+		qgsSocket := SocketAddress{"vsock", fmt.Sprint(VsockHostCid), fmt.Sprint(object.QgsPort)}
+		tdxObject := TdxQomObject{string(object.Type), object.ID, qgsSocket}
+		objectParams = append(objectParams, fmt.Sprintf("'%s'", tdxObject.String()))
 		config.Bios = object.File
 	case SEVGuest:
 		fallthrough
