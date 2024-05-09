@@ -2706,10 +2706,6 @@ type Knobs struct {
 
 	// IOMMUPlatform will enable IOMMU for supported devices
 	IOMMUPlatform bool
-
-	// Whether private memory should be used or not
-	// This is required by TDX, at least.
-	Private bool
 }
 
 // IOThread allows IO to be performed on a separate thread.
@@ -3074,9 +3070,6 @@ func (config *Config) appendMemoryKnobs() {
 		numaMemParam = "node,memdev=" + dimmName
 	}
 
-	if config.Knobs.Private {
-		objMemParam += ",private=on"
-	}
 	if config.Knobs.MemShared {
 		objMemParam += ",share=on"
 	}

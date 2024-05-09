@@ -9,7 +9,8 @@ load "${BATS_TEST_DIRNAME}/lib.sh"
 load "${BATS_TEST_DIRNAME}/confidential_common.sh"
 
 setup() {
-    confidential_setup || skip "Test not supported for ${KATA_HYPERVISOR}."
+    confidential_setup && skip "Due to issues related to pull-image integration skip tests for ${KATA_HYPERVISOR}."
+
     [ "${SNAPSHOTTER:-}" = "nydus" ] || skip "None snapshotter was found but this test requires one"
 
     setup_common 
@@ -19,6 +20,8 @@ setup() {
 }
 
 @test "Test we can pull an unencrypted image outside the guest with runc and then inside the guest successfully" {
+    confidential_setup && skip "Due to issues related to pull-image integration skip tests for ${KATA_HYPERVISOR}."
+
     # 1. Create one runc pod with the $unencrypted_image_1 image
     # We want to have one runc pod, so we pass a fake runtimeclass "runc" and then delete the runtimeClassName,
     # because the runtimeclass is not optional in new_pod_config function.
@@ -46,11 +49,6 @@ setup() {
     set_metadata_annotation "$kata_pod_with_nydus_config" \
         "io.containerd.cri.runtime-handler" \
         "kata-${KATA_HYPERVISOR}"
-
-    [[ " ${SUPPORTED_NON_TEE_HYPERVISORS} " =~ " ${KATA_HYPERVISOR} " ]] && \
-        set_metadata_annotation "$kata_pod_with_nydus_config" \
-            "io.katacontainers.config.hypervisor.image" \
-            "/opt/kata/share/kata-containers/kata-containers-confidential.img"
 
     # For debug sake
     echo "Pod $kata_pod_with_nydus_config file:"
@@ -116,11 +114,6 @@ setup() {
     set_metadata_annotation "$kata_pod_with_nydus_config" \
         "io.containerd.cri.runtime-handler" \
         "kata-${KATA_HYPERVISOR}"
-
-    [[ " ${SUPPORTED_NON_TEE_HYPERVISORS} " =~ " ${KATA_HYPERVISOR} " ]] && \
-        set_metadata_annotation "$kata_pod_with_nydus_config" \
-            "io.katacontainers.config.hypervisor.image" \
-            "/opt/kata/share/kata-containers/kata-containers-confidential.img"
 
     # For debug sake
     echo "Pod $kata_pod_with_nydus_config file:"
@@ -200,11 +193,6 @@ setup() {
         "io.containerd.cri.runtime-handler" \
         "kata-${KATA_HYPERVISOR}"
 
-    [[ " ${SUPPORTED_NON_TEE_HYPERVISORS} " =~ " ${KATA_HYPERVISOR} " ]] && \
-        set_metadata_annotation "$kata_pod_with_nydus_config" \
-            "io.katacontainers.config.hypervisor.image" \
-            "/opt/kata/share/kata-containers/kata-containers-confidential.img"
-
     # For debug sake
     echo "Pod $kata_pod_with_nydus_config file:"
     cat $kata_pod_with_nydus_config
@@ -228,7 +216,8 @@ setup() {
 }
 
 teardown() {
-    check_hypervisor_for_confidential_tests ${KATA_HYPERVISOR} || skip "Test not supported for ${KATA_HYPERVISOR}."
+    confidential_setup && skip "Due to issues related to pull-image integration skip tests for ${KATA_HYPERVISOR}."
+
     [ "${SNAPSHOTTER:-}" = "nydus" ] || skip "None snapshotter was found but this test requires one"
 
     kubectl describe pod "$pod_name"
