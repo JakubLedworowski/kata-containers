@@ -186,7 +186,7 @@ install_cached_tarball_component() {
 	fi
 
 	local component="${1}"
-	local current_version="${2}"
+	local current_version="${2}-$(git log -1 --pretty=format:"%h" ${repo_root_dir}/tools/packaging/kata-deploy/local-build)"
 	local current_image_version="${3}"
 	local component_tarball_name="${4}"
 	local component_tarball_path="${5}"
@@ -326,13 +326,13 @@ install_image() {
 	fi
 
 	export AGENT_TARBALL=$(get_agent_tarball_path)
+	export AGENT_POLICY=yes
 
 	"${rootfs_builder}" --osname="${os_name}" --osversion="${os_version}" --imagetype=image --prefix="${prefix}" --destdir="${destdir}" --image_initrd_suffix="${variant}"
 }
 
 #Install guest image for confidential guests
 install_image_confidential() {
-	export AGENT_POLICY=yes
 	export MEASURED_ROOTFS=yes
 	export PULL_TYPE=default
 	install_image "confidential"
@@ -396,13 +396,13 @@ install_initrd() {
 	fi
 
 	export AGENT_TARBALL=$(get_agent_tarball_path)
+	export AGENT_POLICY=yes
 
 	"${rootfs_builder}" --osname="${os_name}" --osversion="${os_version}" --imagetype=initrd --prefix="${prefix}" --destdir="${destdir}" --image_initrd_suffix="${variant}"
 }
 
 #Install guest initrd for confidential guests
 install_initrd_confidential() {
-	export AGENT_POLICY=yes
 	export MEASURED_ROOTFS=yes
 	export PULL_TYPE=default
 	install_initrd "confidential"
@@ -410,9 +410,41 @@ install_initrd_confidential() {
 
 #Install Mariner guest initrd
 install_initrd_mariner() {
-	export AGENT_POLICY=yes
 	install_initrd "mariner"
 }
+
+#Instal NVIDIA GPU image
+install_image_nvidia_gpu() {
+	export AGENT_POLICY="yes"
+	export AGENT_INIT="yes"
+	export EXTRA_PKGS="apt udev"
+	install_image "nvidia-gpu"
+}
+
+#Install NVIDIA GPU initrd
+install_initrd_nvidia_gpu() {
+	export AGENT_POLICY="yes"
+	export AGENT_INIT="yes"
+	export EXTRA_PKGS="apt udev"
+	install_initrd "nvidia-gpu"
+}
+
+#Instal NVIDIA GPU confidential image
+install_image_nvidia_gpu_confidential() {
+	export AGENT_POLICY="yes"
+	export AGENT_INIT="yes"
+	export EXTRA_PKGS="apt udev"
+	install_image "nvidia-gpu-confidential"
+}
+
+#Install NVIDIA GPU confidential initrd
+install_initrd_nvidia_gpu_confidential() {
+	export AGENT_POLICY="yes"
+	export AGENT_INIT="yes"
+	export EXTRA_PKGS="apt udev"
+	install_initrd "nvidia-gpu-confidential"
+}
+
 
 install_se_image() {
 	info "Create IBM SE image configured with AA_KBC=${AA_KBC}"
@@ -436,15 +468,20 @@ install_cached_kernel_tarball_component() {
 		"${extra_tarballs}" \
 		|| return 1
 
-	if [[ "${kernel_name}" != "kernel"*"-confidential" ]]; then
-		return 0
-	fi
+	case ${kernel_name} in
+		"kernel-nvidia-gpu"*"")
+			local kernel_headers_dir=$(get_kernel_headers_dir "${kernel_name}")
+			mkdir -p ${kernel_headers_dir} || true
+			tar xvf ${workdir}/${kernel_name}/builddir/kata-static-${kernel_name}-headers.tar.xz -C "${kernel_headers_dir}" || return 1
+			;;& # fallthrough in the confidential case we need the modules.tar.xz and for every kernel-nvidia-gpu we need the headers
+		"kernel"*"-confidential")
+			local modules_dir=$(get_kernel_modules_dir ${kernel_version} ${kernel_kata_config_version} ${build_target})
+			mkdir -p "${modules_dir}" || true
+			tar xvf "${workdir}/kata-static-${kernel_name}-modules.tar.xz" -C "${modules_dir}" || return 1
+			;;
+	esac
 
-	local modules_dir=$(get_kernel_modules_dir ${kernel_version} ${kernel_kata_config_version} ${build_target})
-	mkdir -p "${modules_dir}" || true
-	tar xvf "${workdir}/kata-static-${kernel_name}-modules.tar.xz" -C  "${modules_dir}" && return 0
-
-	return 1
+	return 0
 }
 
 #Install kernel asset
@@ -1024,6 +1061,14 @@ handle_build() {
 
 	rootfs-initrd-mariner) install_initrd_mariner ;;
 
+	rootfs-nvidia-gpu-image) install_image_nvidia_gpu ;;
+
+	rootfs-nvidia-gpu-initrd) install_initrd_nvidia_gpu ;;	
+	
+	rootfs-nvidia-gpu-confidential-image) install_image_nvidia_gpu_confidential ;;
+
+	rootfs-nvidia-gpu-confidential-initrd) install_initrd_nvidia_gpu_confidential ;;
+
 	runk) install_runk ;;
 
 	shim-v2) install_shimv2 ;;
@@ -1072,7 +1117,7 @@ handle_build() {
 	esac
 
 	pushd ${workdir}
-	echo "${latest_artefact}" > ${build_target}-version
+	echo "${latest_artefact}-$(git log -1 --pretty=format:"%h" ${repo_root_dir}/tools/packaging/kata-deploy/local-build)" > ${build_target}-version
 	echo "${latest_builder_image}" > ${build_target}-builder-image-version
 	sha256sum "${final_tarball_name}" > ${build_target}-sha256sum
 
@@ -1087,7 +1132,16 @@ handle_build() {
 		echo "${ARTEFACT_REGISTRY_PASSWORD}" | sudo oras login "${ARTEFACT_REGISTRY}" -u "${ARTEFACT_REGISTRY_USERNAME}" --password-stdin
 
 		case ${build_target} in
-			kernel-nvidia-gpu*)
+			kernel-nvidia-gpu)
+				sudo oras push \
+					${ARTEFACT_REGISTRY}/kata-containers/cached-artefacts/${build_target}:latest-${TARGET_BRANCH}-$(uname -m) \
+					${final_tarball_name} \
+					"kata-static-${build_target}-headers.tar.xz" \
+					${build_target}-version \
+					${build_target}-builder-image-version \
+					${build_target}-sha256sum
+				;;
+			kernel-nvidia-gpu-confidential)
 				sudo oras push \
 					${ARTEFACT_REGISTRY}/kata-containers/cached-artefacts/${build_target}:latest-${TARGET_BRANCH}-$(uname -m) \
 					${final_tarball_name} \
