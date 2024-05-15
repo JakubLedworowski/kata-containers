@@ -409,7 +409,7 @@ func (object Object) QemuParams(config *Config) []string {
 	case TDXGuest:
 		qgsSocket := SocketAddress{"vsock", fmt.Sprint(VsockHostCid), fmt.Sprint(object.QgsPort)}
 		tdxObject := TdxQomObject{string(object.Type), object.ID, qgsSocket}
-		objectParams = append(objectParams, fmt.Sprintf("'%s'", tdxObject.String()))
+		objectParams = append(objectParams, tdxObject.String())
 		config.Bios = object.File
 	case SEVGuest:
 		fallthrough
