@@ -352,6 +352,7 @@ type TdxQomObject struct {
 	QomType               string        `json:"qom-type"`
 	Id                    string        `json:"id"`
 	QuoteGenerationSocket SocketAddress `json:"quote-generation-socket"`
+	Debug                 *bool         `json:"debug,omitempty"`
 }
 
 func (this *SocketAddress) String() string {
@@ -408,7 +409,12 @@ func (object Object) QemuParams(config *Config) []string {
 
 	case TDXGuest:
 		qgsSocket := SocketAddress{"vsock", fmt.Sprint(VsockHostCid), fmt.Sprint(object.QgsPort)}
-		tdxObject := TdxQomObject{string(object.Type), object.ID, qgsSocket}
+		tdxObject := TdxQomObject{string(object.Type), object.ID, qgsSocket, nil}
+
+		if object.Debug {
+			*tdxObject.Debug = true
+		}
+
 		objectParams = append(objectParams, tdxObject.String())
 		config.Bios = object.File
 	case SEVGuest:
